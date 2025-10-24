@@ -1,0 +1,22 @@
+pirmais solis - 1  pret 3 un  2 pret 4
+otrais solis  - 1 pret 4 2 pret 3 
+tresais solis - 3 pret 4 1 pret 2 
+
+speletajs min uzvaretaju, izvelas kuras 2 vai 1 ir home team. 
+
+kalendarā redzam rezultatus. 
+punktu tabula - standings 
+koeficentus 
+
+note  - ja mums ir neiszkirts  ir papildlaiks pec paildlaika - pec speles metieni 
+un tad beigas ir sis te uzvaretajs 
+
+katrai valstij is svars un sis notiek tikai super match up 
+
+par uzvaru - 3p
+zaudejums - 0p 
+uzvara pep. laiks b. - 2p
+zaudejus pap.laiks, b  - 1p 
+
+note x  - for playoufs and probability calculations use markow chains and sheplys 
+8 4 pus finals un finals
