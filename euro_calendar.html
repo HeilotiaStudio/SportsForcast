@@ -92,20 +92,39 @@ function computeGroupStandings(teams, config){
   return {table, results};
 }
 
-function simulateKnockouts(teams, config){
-  let rounds=[], current=teams.slice();
-  const roundNames=["Quarterfinals","Semifinals","Final"];
-  let idx=0;
-  while(current.length>1){
-    const round={round:roundNames[idx]||`Round ${idx+1}`, matches:[]};
-    for(let i=0;i<current.length;i+=2){
-      const match=simulateMatch(current[i],current[i+1],config);
+function simulateKnockouts(qualifiedTeams, config) {
+  let rounds = [];
+  let current = qualifiedTeams.slice(); // clone array
+  const roundNames = ["Quarterfinals", "Semifinals", "Final"];
+  let idx = 0;
+
+  while (current.length > 1) {
+    const round = { round: roundNames[idx] || `Round ${idx + 1}`, matches: [] };
+
+    for (let i = 0; i < current.length; i += 2) {
+      const team1 = current[i];
+      const team2 = current[i + 1];
+      const match = simulateMatch(team1, team2, config);
       round.matches.push(match);
     }
+
     rounds.push(round);
-    current=round.matches.map((m,i)=> m.winner==="Draw"? randomChoice([current[i*2],current[i*2+1]].map(t=>t)) : allCountries.find(t=>t.name===m.winner));
+
+    // Compute winners safely
+    current = round.matches.map((m, mi) => {
+      if (m.winner === "Draw") {
+        // Randomly pick winner between the original teams
+        return Math.random() < 0.5 ? current[mi * 2] : current[mi * 2 + 1];
+      } else {
+        // Find the actual team object from the current array (with weights)
+        const winnerTeam = current.find(t => t.name === m.winner);
+        return winnerTeam || current[mi * 2]; // fallback in case not found
+      }
+    });
+
     idx++;
   }
+
   return rounds;
 }
 
@@ -186,6 +205,7 @@ document.getElementById("downloadJSON").addEventListener("click",()=>{
 
 </body>
 </html>
+
 
 
 
