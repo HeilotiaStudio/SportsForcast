@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Euro Cup Simulation with Tweaks</title>
+<title>Euro Cup Simulation with Full Logic</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
   body { background-color: #101820; color: white; font-family: Arial, sans-serif; }
@@ -59,12 +59,13 @@ function simulateMatch(team1, team2, config, homeBoost=false) {
   return { team1:team1.name, team2:team2.name, goals1, goals2, winner, wentOT };
 }
 
-function computeGroupStandings(teams, config){
+function computeGroupStandings(teams, config, homeCountries){
   const table = teams.map(t=>({...t, points:0, goalsFor:0, goalsAgainst:0}));
   const results=[];
   for(let i=0;i<teams.length;i++){
     for(let j=i+1;j<teams.length;j++){
-      const match = simulateMatch(table[i], table[j], config);
+      const isHome1 = homeCountries.includes(teams[i].id);
+      const match = simulateMatch(table[i], table[j], config, isHome1);
       results.push(match);
       table[i].goalsFor += match.goals1; table[i].goalsAgainst+=match.goals2;
       table[j].goalsFor += match.goals2; table[j].goalsAgainst+=match.goals1;
@@ -77,14 +78,15 @@ function computeGroupStandings(teams, config){
   return { table, results };
 }
 
-function simulateKnockouts(qualifiedTeams, config){
+function simulateKnockouts(qualifiedTeams, config, homeCountries){
   let rounds=[], current=qualifiedTeams.slice();
   const roundNames=["Quarterfinals","Semifinals","Final"];
   let idx=0;
   while(current.length>1){
     const round = { round: roundNames[idx] || `Round ${idx+1}`, matches:[] };
     for(let i=0;i<current.length;i+=2){
-      const match = simulateMatch(current[i], current[i+1], config);
+      const isHome1 = homeCountries.includes(current[i].id);
+      const match = simulateMatch(current[i], current[i+1], config, isHome1);
       round.matches.push(match);
     }
     rounds.push(round);
@@ -104,6 +106,8 @@ function EuroSimulation() {
     const allPicked = JSON.parse(localStorage.getItem("allPickedCountries")) || [];
     if(allPicked.length!==16){ alert("16 countries needed in 4 groups."); return; }
 
+    const homeCountries = JSON.parse(localStorage.getItem("homeCountries")) || [];
+
     const groups={
       "Group A": allPicked.slice(0,4),
       "Group B": allPicked.slice(4,8),
@@ -114,12 +118,12 @@ function EuroSimulation() {
     let groupResults={}, qualified=[];
 
     for(const [gName, teams] of Object.entries(groups)){
-      const { table, results } = computeGroupStandings(teams, config);
+      const { table, results } = computeGroupStandings(teams, config, homeCountries);
       groupResults[gName]={ table, matches:results };
       qualified.push(...table.slice(0,2));
     }
 
-    const knockouts = simulateKnockouts(qualified, config);
+    const knockouts = simulateKnockouts(qualified, config, homeCountries);
     const champName = knockouts[knockouts.length-1].matches[0].winner;
     const championObj = allPicked.find(t=>t.name===champName);
     const simResults = { groups: groupResults, knockouts, champion: championObj };
@@ -164,27 +168,46 @@ function EuroSimulation() {
 
       {results && <>
         <div className="champion">Champion: {results.champion.name}</div>
+
         {Object.entries(results.groups).map(([groupName,data])=>
           <div key={groupName}>
             <h3>{groupName}</h3>
-            {data.matches.map((m,idx)=>(
-              <div key={idx} className="calendar-day">
-                <div className="team">{m.team1} {m.goals1} - {m.goals2} {m.team2}</div>
+            {data.matches.map((m,idx)=>{
+              const homeTeam1 = JSON.parse(localStorage.getItem("homeCountries"))?.includes(allPicked.find(t=>t.name===m.team1)?.id);
+              const homeTeam2 = JSON.parse(localStorage.getItem("homeCountries"))?.includes(allPicked.find(t=>t.name===m.team2)?.id);
+              return (
+              <div key={idx} className="calendar-day" style={{backgroundColor: homeTeam1||homeTeam2?"#223322":"#1f1f1f"}}>
+                <div className="team">
+                  <span style={{fontWeight: m.winner===m.team1?"bold":"normal", color: m.winner===m.team1?"lime":"white"}}>{m.team1} {m.goals1}</span>
+                  <span> - </span>
+                  <span style={{fontWeight: m.winner===m.team2?"bold":"normal", color: m.winner===m.team2?"lime":"white"}}>{m.goals2} {m.team2}</span>
+                  {m.wentOT && <span style={{marginLeft:10, color:"orange"}}>(OT)</span>}
+                </div>
               </div>
-            ))}
+              )
+            })}
           </div>
-        ))}
+        )}
 
         <div>
           <h3>Knockouts</h3>
           {results.knockouts.map((r,ri)=>(
             <div key={ri}>
               <h4>{r.round}</h4>
-              {r.matches.map((m,mi)=>(
-                <div key={mi} className="calendar-day">
-                  <div className="team">{m.team1} {m.goals1} - {m.goals2} {m.team2}</div>
-                </div>
-              ))}
+              {r.matches.map((m,mi)=>{
+                const homeTeam1 = JSON.parse(localStorage.getItem("homeCountries"))?.includes(allPicked.find(t=>t.name===m.team1)?.id);
+                const homeTeam2 = JSON.parse(localStorage.getItem("homeCountries"))?.includes(allPicked.find(t=>t.name===m.team2)?.id);
+                return (
+                  <div key={mi} className="calendar-day" style={{backgroundColor: homeTeam1||homeTeam2?"#223322":"#1f1f1f"}}>
+                    <div className="team">
+                      <span style={{fontWeight: m.winner===m.team1?"bold":"normal", color: m.winner===m.team1?"lime":"white"}}>{m.team1} {m.goals1}</span>
+                      <span> - </span>
+                      <span style={{fontWeight: m.winner===m.team2?"bold":"normal", color: m.winner===m.team2?"lime":"white"}}>{m.goals2} {m.team2}</span>
+                      {m.wentOT && <span style={{marginLeft:10, color:"orange"}}>(OT)</span>}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           ))}
         </div>
@@ -198,3 +221,5 @@ ReactDOM.createRoot(document.getElementById('root')).render(<EuroSimulation />);
 </script>
 </body>
 </html>
+
+
