@@ -3,186 +3,191 @@
 <head>
 <meta charset="UTF-8">
 <title>Euro Cup Simulation</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
-  body { background-color: #101820; color: white; font-family: Arial, sans-serif; padding:20px; }
-  .calendar-day { border:1px solid #fff; padding:8px; margin:5px 0; border-radius:6px; background:#1f1f1f; }
+  body { background:#101820; color:white; font-family:Arial,sans-serif; padding:20px; }
+  .tweak-panel { background:#222; border:1px solid #fff; padding:10px; margin-bottom:20px; border-radius:6px; }
+  .tweak-panel label { display:block; margin:5px 0; }
+  input[type=number] { width:50px; }
+  .button { padding:10px 20px; margin:5px; cursor:pointer; background:orange; border:none; border-radius:6px; color:white; }
+  .champion { color:lime; font-weight:bold; font-size:1.5rem; margin-bottom:15px; }
+  .calendar-day { border:1px solid #fff; padding:5px; margin:3px 0; border-radius:5px; background:#1f1f1f; }
   .team { display:flex; align-items:center; gap:5px; }
-  .champion { color: lime; font-weight:bold; font-size:1.5rem; margin-bottom:15px; }
-  .ot { color: orange; }
-  .tweak-panel { border:1px solid #fff; padding:10px; border-radius:6px; margin-bottom:15px; background:#222; }
-  input[type=number] { width:60px; margin-right:5px; }
-  .button { margin:5px; padding:8px 15px; font-size:16px; background:orange; border:none; border-radius:8px; color:white; cursor:pointer; }
 </style>
 </head>
 <body>
 
-<div class="tweak-panel">
-  <h4>Adjust Coefficients / Chances</h4>
-  <label>Home Boost:</label>
-  <input type="number" step="0.01" id="homeBoost" value="0.1"><br>
-  <label>OT Weak-Strong:</label>
-  <input type="number" step="0.01" id="otWeakStrong" value="0.1"><br>
-  <label>OT Medium-Weak:</label>
-  <input type="number" step="0.01" id="otMediumWeak" value="0.35"><br>
-  <label>OT Same Strength:</label>
-  <input type="number" step="0.01" id="otSameStrength" value="0.5">
+<h2>Euro Cup Simulation</h2>
+
+<div class="tweak-panel" id="tweakPanel">
+  <h4>Global Settings</h4>
+  <label>Home Boost: <input type="number" id="homeBoost" step="0.01" value="0.1"></label>
+  <label>OT Weak-Strong: <input type="number" id="otWS" step="0.01" value="0.1"></label>
+  <label>OT Medium-Weak: <input type="number" id="otMW" step="0.01" value="0.35"></label>
+  <label>OT Same Strength: <input type="number" id="otSS" step="0.01" value="0.5"></label>
+
+  <h4>Country Strengths</h4>
+  <div id="countryWeights"></div>
 </div>
 
-<button class="button" onclick="runSimulation()">Run Simulation</button>
-<button class="button" onclick="downloadJSON()">Download JSON</button>
+<button class="button" id="runSim">Run Simulation</button>
+<button class="button" id="downloadJSON">Download Results</button>
 
 <div id="results"></div>
 
 <script>
-// --- CONFIG ---
-let config = {
-  HOME_BOOST: 0.1,
-  OT_CHANCES: { "weak-strong":0.1, "medium-weak":0.35, "same-strength":0.5 }
-};
+// --- Define countries ---
+const allCountries = [
+  {name:"Ireland"}, {name:"Greece"}, {name:"Finland"}, {name:"Latvia"},
+  {name:"Slovakia"}, {name:"Greece"}, {name:"Germany"}, {name:"France"},
+  {name:"Italy"}, {name:"Spain"}, {name:"Portugal"}, {name:"Netherlands"},
+  {name:"Belgium"}, {name:"Croatia"}, {name:"Turkey"}, {name:"Poland"}
+];
 
-// --- HELPERS ---
+// --- Generate tweak inputs ---
+const countryWeightsDiv = document.getElementById("countryWeights");
+allCountries.forEach(c=>{
+  const lbl = document.createElement("label");
+  lbl.innerHTML = `${c.name} weight: <input type="number" id="w-${c.name}" min="1" max="3" value="2" step="1">`;
+  countryWeightsDiv.appendChild(lbl);
+});
+
+// --- Helpers ---
 function randomChoice(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
 
-function simulateMatch(team1, team2, homeBoost=false){
-  const strengthMap = { weak:1, medium:2, strong:3 };
-  const t1Str = strengthMap[team1.strength]||2;
-  const t2Str = strengthMap[team2.strength]||2;
-  let t1Weight = t1Str + (homeBoost?config.HOME_BOOST:0);
-  let t2Weight = t2Str;
-
-  let goals1 = Math.round(Math.floor(Math.random()*3) + t1Weight);
-  let goals2 = Math.round(Math.floor(Math.random()*3) + t2Weight);
-
+function simulateMatch(team1, team2, config, home=false){
+  const t1Weight = team1.weight + (home ? config.HOME_BOOST : 0);
+  const t2Weight = team2.weight;
+  const baseGoals = ()=> Math.floor(Math.random()*3);
+  let goals1 = baseGoals() + t1Weight;
+  let goals2 = baseGoals() + t2Weight;
   let wentOT = false;
-  if(goals1===goals2){
+
+  if(Math.round(goals1)===Math.round(goals2)){
     wentOT=true;
-    let key = t1Str===t2Str ? "same-strength" : t1Str>t2Str ? "strong-weak":"weak-strong";
-    if(Math.random()<config.OT_CHANCES[key]){
-      if(Math.random()<0.5) goals1+=1; else goals2+=1;
-    }
+    let key = Math.abs(t1Weight-t2Weight)<0.5 ? "same-strength" : t1Weight>t2Weight ? "strong-weak":"weak-strong";
+    const otChance = config.OT_CHANCES[key];
+    if(Math.random()<otChance){ Math.random()<0.5 ? goals1+=1 : goals2+=1; }
   }
 
+  goals1=Math.round(goals1); goals2=Math.round(goals2);
   let winner = goals1>goals2? team1.name : goals2>goals1? team2.name : "Draw";
-  return { team1:team1.name, team2:team2.name, goals1, goals2, winner, wentOT };
+  return {team1:team1.name, team2:team2.name, goals1, goals2, winner, wentOT};
 }
 
-function computeGroupStandings(teams){
+function computeGroupStandings(teams, config){
   const table = teams.map(t=>({...t, points:0, goalsFor:0, goalsAgainst:0}));
   const results=[];
   for(let i=0;i<teams.length;i++){
     for(let j=i+1;j<teams.length;j++){
-      const match = simulateMatch(table[i], table[j]);
+      const match = simulateMatch(table[i], table[j], config);
       results.push(match);
-      table[i].goalsFor += match.goals1; table[i].goalsAgainst += match.goals2;
-      table[j].goalsFor += match.goals2; table[j].goalsAgainst += match.goals1;
+      table[i].goalsFor += match.goals1; table[i].goalsAgainst+=match.goals2;
+      table[j].goalsFor += match.goals2; table[j].goalsAgainst+=match.goals1;
       if(match.winner===table[i].name) table[i].points+=3;
       else if(match.winner===table[j].name) table[j].points+=3;
       else { table[i].points+=1; table[j].points+=1; }
     }
   }
   table.sort((a,b)=> b.points!==a.points? b.points-a.points : (b.goalsFor-b.goalsAgainst)-(a.goalsFor-a.goalsAgainst));
-  return { table, results };
+  return {table, results};
 }
 
-function simulateKnockouts(teams){
+function simulateKnockouts(teams, config){
   let rounds=[], current=teams.slice();
   const roundNames=["Quarterfinals","Semifinals","Final"];
   let idx=0;
   while(current.length>1){
-    const round={ round: roundNames[idx]||`Round ${idx+1}`, matches:[] };
+    const round={round:roundNames[idx]||`Round ${idx+1}`, matches:[]};
     for(let i=0;i<current.length;i+=2){
-      const match = simulateMatch(current[i], current[i+1]);
+      const match=simulateMatch(current[i],current[i+1],config);
       round.matches.push(match);
     }
     rounds.push(round);
-    current = round.matches.map((m,i)=> m.winner==="Draw"? randomChoice([current[i*2],current[i*2+1]]).name : m.winner);
-    current = current.map(w=> teams.find(t=>t.name===w));
+    current=round.matches.map((m,i)=> m.winner==="Draw"? randomChoice([current[i*2],current[i*2+1]].map(t=>t)) : allCountries.find(t=>t.name===m.winner));
     idx++;
   }
   return rounds;
 }
 
-// --- SIMULATION ---
-function runSimulation(){
-  config.HOME_BOOST = parseFloat(document.getElementById('homeBoost').value);
-  config.OT_CHANCES['weak-strong'] = parseFloat(document.getElementById('otWeakStrong').value);
-  config.OT_CHANCES['medium-weak'] = parseFloat(document.getElementById('otMediumWeak').value);
-  config.OT_CHANCES['same-strength'] = parseFloat(document.getElementById('otSameStrength').value);
-
-  const allPicked = JSON.parse(localStorage.getItem("allPickedCountries")) || [];
-  if(allPicked.length!==16){ alert("16 countries needed in 4 groups."); return; }
-
-  const groups = {
-    "Group A": allPicked.slice(0,4),
-    "Group B": allPicked.slice(4,8),
-    "Group C": allPicked.slice(8,12),
-    "Group D": allPicked.slice(12,16)
+// --- Run Simulation ---
+document.getElementById("runSim").addEventListener("click",()=>{
+  const homeBoost=parseFloat(document.getElementById("homeBoost").value);
+  const config = {
+    HOME_BOOST: homeBoost,
+    OT_CHANCES:{
+      "weak-strong": parseFloat(document.getElementById("otWS").value),
+      "medium-weak": parseFloat(document.getElementById("otMW").value),
+      "same-strength": parseFloat(document.getElementById("otSS").value)
+    }
   };
 
-  let groupResults={}, qualified=[];
+  // Assign weights
+  const countriesWithWeights = allCountries.map(c=>({
+    ...c,
+    weight: parseFloat(document.getElementById(`w-${c.name}`).value)
+  }));
+
+  // Groups
+  const groups = {
+    "Group A": countriesWithWeights.slice(0,4),
+    "Group B": countriesWithWeights.slice(4,8),
+    "Group C": countriesWithWeights.slice(8,12),
+    "Group D": countriesWithWeights.slice(12,16)
+  };
+
+  const groupResults={}, qualified=[];
   for(const [gName, teams] of Object.entries(groups)){
-    const { table, results } = computeGroupStandings(teams);
-    groupResults[gName] = { table, matches: results };
+    const {table, results} = computeGroupStandings(teams, config);
+    groupResults[gName]={table, matches:results};
     qualified.push(...table.slice(0,2));
   }
 
-  const knockouts = simulateKnockouts(qualified);
+  const knockouts = simulateKnockouts(qualified, config);
   const champName = knockouts[knockouts.length-1].matches[0].winner;
-  const championObj = allPicked.find(t=>t.name===champName);
-
-  const simResults = { groups: groupResults, knockouts, champion: championObj };
+  const championObj = countriesWithWeights.find(t=>t.name===champName);
+  const simResults={groups:groupResults, knockouts, champion:championObj};
   localStorage.setItem("simulationResults", JSON.stringify(simResults,null,2));
 
-  renderResults(simResults);
-}
-
-// --- RENDER ---
-function renderResults(results){
-  const container = document.getElementById('results');
-  container.innerHTML = `<div class="champion">🏆 Champion: ${results.champion.name}</div>`;
-
-  // groups
-  for(const [gName,data] of Object.entries(results.groups)){
-    let html = `<h3>${gName}</h3>`;
-    for(const m of data.matches){
-      html+=`<div class="calendar-day ${m.wentOT?'ot':''}"><div class="team">${m.team1} ${m.goals1} - ${m.goals2} ${m.team2}</div></div>`;
-    }
-    html+=`<p>Standings:</p><ul>`;
-    for(const t of data.table){
-      html+=`<li>${t.name} - ${t.points} pts (${t.goalsFor}:${t.goalsAgainst})</li>`;
-    }
-    html+=`</ul>`;
-    container.innerHTML+=html;
+  // Display results
+  const resDiv=document.getElementById("results");
+  resDiv.innerHTML=`<div class="champion">Champion: ${championObj.name}</div>`;
+  for(const [gName,data] of Object.entries(groupResults)){
+    const h=document.createElement("h3"); h.textContent=gName; resDiv.appendChild(h);
+    data.matches.forEach(m=>{
+      const d=document.createElement("div"); d.className="calendar-day";
+      d.textContent=`${m.team1} ${m.goals1} - ${m.goals2} ${m.team2}`;
+      resDiv.appendChild(d);
+    });
   }
+  const hKO=document.createElement("h3"); hKO.textContent="Knockouts"; resDiv.appendChild(hKO);
+  knockouts.forEach(r=>{
+    const h=document.createElement("h4"); h.textContent=r.round; resDiv.appendChild(h);
+    r.matches.forEach(m=>{
+      const d=document.createElement("div"); d.className="calendar-day";
+      d.textContent=`${m.team1} ${m.goals1} - ${m.goals2} ${m.team2}`;
+      resDiv.appendChild(d);
+    });
+  });
+});
 
-  // knockouts
-  container.innerHTML+=`<h3>Knockouts</h3>`;
-  for(const r of results.knockouts){
-    let html = `<h4>${r.round}</h4>`;
-    for(const m of r.matches){
-      html+=`<div class="calendar-day ${m.wentOT?'ot':''}"><div class="team">${m.team1} ${m.goals1} - ${m.goals2} ${m.team2}</div></div>`;
-    }
-    container.innerHTML+=html;
-  }
-}
-
-// --- DOWNLOAD ---
-function downloadJSON(){
-  const results = JSON.parse(localStorage.getItem("simulationResults"));
-  if(!results){ alert("Run simulation first."); return; }
-  const dataStr = "data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(results,null,2));
-  const link = document.createElement("a");
-  link.setAttribute("href",dataStr);
-  link.setAttribute("download","simulationResults.json");
+// --- Download ---
+document.getElementById("downloadJSON").addEventListener("click",()=>{
+  const results = localStorage.getItem("simulationResults");
+  if(!results){ alert("Run simulation first"); return; }
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(results);
+  const link=document.createElement("a");
+  link.href=dataStr;
+  link.download="simulationResults.json";
   document.body.appendChild(link);
   link.click();
   link.remove();
-}
+});
 </script>
 
 </body>
 </html>
+
+
 
 
 
