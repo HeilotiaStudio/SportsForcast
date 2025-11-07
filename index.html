@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="UTF-8">
+<head>
+    <title>Hockey Simulator Game</title>
+    <style>
+        body {
+            background-image: url('puck.jpg');
+            background-size: cover;
+            background-repeat: no-repeat;
+            text-align: center;
+            padding-top: 100px;
+            font-family: Arial, sans-serif;
+        }
+
+        button {
+            font-size: 32px;
+            color: white;
+            background-color: orange;
+            border: none;
+            padding: 20px 40px;
+            cursor: pointer;
+            border-radius: 10px;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: darkorange;
+        }
+    </style>
+</head>
+<body>
+    <button onclick="startGame()">Play Hockey Simulator</button>
+
+    <script>
+        function startGame() {
+            alert("Welcome to the Hockey Simulator!");
+            window.location.href = "tournaments.html"; 
+        }
+    </script>
+</body>
+</html>

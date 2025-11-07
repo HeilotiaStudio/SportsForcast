@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Euro Cup Simulation with Tweaks</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  body { background-color: #101820; color: white; font-family: Arial, sans-serif; }
+  .calendar-day { border:1px solid #fff; padding:10px; margin:5px; border-radius:6px; background:#1f1f1f; }
+  .team { display:flex; align-items:center; gap:5px; }
+  .flag { width:24px; height:16px; border:1px solid #ccc; }
+  .champion { color: lime; font-weight: bold; font-size:1.5rem; margin-bottom:20px; }
+  .button { margin:10px 5px; padding:10px 20px; font-size:16px; background:orange; border:none; border-radius:8px; color:white; cursor:pointer; }
+  .tweak-panel { border:1px solid #fff; padding:10px; border-radius:6px; margin-bottom:15px; background:#222; }
+  .tweak-panel label { margin-right:5px; }
+  input[type=number] { width:60px; }
+</style>
+</head>
+<body>
+
+<div class="container my-5" id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+
+// --- DEFAULT CONFIG ---
+const defaultConfig = {
+  HOME_BOOST: 0.1,
+  OT_CHANCES: { "weak-strong": 0.1, "medium-weak": 0.35, "same-strength": 0.5 }
+};
+
+// --- HELPERS ---
+function randomChoice(arr) { return arr[Math.floor(Math.random()*arr.length)]; }
+
+function simulateMatch(team1, team2, config, homeBoost=false) {
+  const strengthMap = { weak: 1, medium: 2, strong: 3 };
+  const t1Str = strengthMap[team1.strength] || 2;
+  const t2Str = strengthMap[team2.strength] || 2;
+  let t1Weight = t1Str + (homeBoost ? config.HOME_BOOST : 0);
+  let t2Weight = t2Str;
+
+  const baseGoals = ()=> Math.floor(Math.random()*3);
+  let goals1 = baseGoals() + t1Weight;
+  let goals2 = baseGoals() + t2Weight;
+
+  let wentOT=false;
+  if(Math.round(goals1)===Math.round(goals2)){
+    wentOT=true;
+    let key = t1Str===t2Str ? "same-strength" : t1Str>t2Str ? "strong-weak":"weak-strong";
+    const otChance = config.OT_CHANCES[key] || 0.25;
+    if(Math.random()<otChance){ Math.random()<0.5 ? goals1+=1 : goals2+=1; }
+  }
+
+  goals1=Math.round(goals1); goals2=Math.round(goals2);
+  let winner = goals1>goals2? team1.name : goals2>goals1? team2.name : "Draw";
+  return { team1:team1.name, team2:team2.name, goals1, goals2, winner, wentOT };
+}
+
+function computeGroupStandings(teams, config){
+  const table = teams.map(t=>({...t, points:0, goalsFor:0, goalsAgainst:0}));
+  const results=[];
+  for(let i=0;i<teams.length;i++){
+    for(let j=i+1;j<teams.length;j++){
+      const match = simulateMatch(table[i], table[j], config);
+      results.push(match);
+      table[i].goalsFor += match.goals1; table[i].goalsAgainst+=match.goals2;
+      table[j].goalsFor += match.goals2; table[j].goalsAgainst+=match.goals1;
+      if(match.winner===table[i].name) table[i].points+=3;
+      else if(match.winner===table[j].name) table[j].points+=3;
+      else { table[i].points+=1; table[j].points+=1; }
+    }
+  }
+  table.sort((a,b)=> b.points!==a.points? b.points-a.points : (b.goalsFor-b.goalsAgainst)-(a.goalsFor-a.goalsAgainst));
+  return { table, results };
+}
+
+function simulateKnockouts(qualifiedTeams, config){
+  let rounds=[], current=qualifiedTeams.slice();
+  const roundNames=["Quarterfinals","Semifinals","Final"];
+  let idx=0;
+  while(current.length>1){
+    const round = { round: roundNames[idx] || `Round ${idx+1}`, matches:[] };
+    for(let i=0;i<current.length;i+=2){
+      const match = simulateMatch(current[i], current[i+1], config);
+      round.matches.push(match);
+    }
+    rounds.push(round);
+    current = round.matches.map((m,i)=> m.winner==="Draw"? randomChoice([current[i*2],current[i*2+1]]).name : m.winner);
+    current = current.map(w=> qualifiedTeams.find(t=>t.name===w));
+    idx++;
+  }
+  return rounds;
+}
+
+// --- MAIN COMPONENT ---
+function EuroSimulation() {
+  const [results,setResults] = React.useState(null);
+  const [config,setConfig] = React.useState(defaultConfig);
+
+  const runSimulation = ()=>{
+    const allPicked = JSON.parse(localStorage.getItem("allPickedCountries")) || [];
+    if(allPicked.length!==16){ alert("16 countries needed in 4 groups."); return; }
+
+    const groups={
+      "Group A": allPicked.slice(0,4),
+      "Group B": allPicked.slice(4,8),
+      "Group C": allPicked.slice(8,12),
+      "Group D": allPicked.slice(12,16)
+    };
+
+    let groupResults={}, qualified=[];
+
+    for(const [gName, teams] of Object.entries(groups)){
+      const { table, results } = computeGroupStandings(teams, config);
+      groupResults[gName]={ table, matches:results };
+      qualified.push(...table.slice(0,2));
+    }
+
+    const knockouts = simulateKnockouts(qualified, config);
+    const champName = knockouts[knockouts.length-1].matches[0].winner;
+    const championObj = allPicked.find(t=>t.name===champName);
+    const simResults = { groups: groupResults, knockouts, champion: championObj };
+    localStorage.setItem("simulationResults", JSON.stringify(simResults,null,2));
+    setResults(simResults);
+  };
+
+  const downloadJSON = ()=>{
+    if(!results){ alert("Run simulation first."); return; }
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(results,null,2));
+    const link = document.createElement("a");
+    link.setAttribute("href", dataStr);
+    link.setAttribute("download","simulationResults.json");
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
+  return (
+    <div>
+      <div className="tweak-panel">
+        <h4>Tweak Coefficients / Chances</h4>
+        <label>Home Boost:</label>
+        <input type="number" step="0.01" value={config.HOME_BOOST} 
+          onChange={e=>setConfig({...config, HOME_BOOST: parseFloat(e.target.value)})} />
+        <br/>
+        <label>OT Weak-Strong:</label>
+        <input type="number" step="0.01" value={config.OT_CHANCES["weak-strong"]}
+          onChange={e=>setConfig({...config, OT_CHANCES:{...config.OT_CHANCES,"weak-strong":parseFloat(e.target.value)}})} />
+        <br/>
+        <label>OT Medium-Weak:</label>
+        <input type="number" step="0.01" value={config.OT_CHANCES["medium-weak"]}
+          onChange={e=>setConfig({...config, OT_CHANCES:{...config.OT_CHANCES,"medium-weak":parseFloat(e.target.value)}})} />
+        <br/>
+        <label>OT Same Strength:</label>
+        <input type="number" step="0.01" value={config.OT_CHANCES["same-strength"]}
+          onChange={e=>setConfig({...config, OT_CHANCES:{...config.OT_CHANCES,"same-strength":parseFloat(e.target.value)}})} />
+      </div>
+
+      <button className="button" onClick={runSimulation}>Run Simulation</button>
+      <button className="button" onClick={downloadJSON}>Download JSON</button>
+
+      {results && <>
+        <div className="champion">Champion: {results.champion.name}</div>
+        {Object.entries(results.groups).map(([groupName,data])=>
+          <div key={groupName}>
+            <h3>{groupName}</h3>
+            {data.matches.map((m,idx)=>(
+              <div key={idx} className="calendar-day">
+                <div className="team">{m.team1} {m.goals1} - {m.goals2} {m.team2}</div>
+              </div>
+            ))}
+          </div>
+        ))}
+
+        <div>
+          <h3>Knockouts</h3>
+          {results.knockouts.map((r,ri)=>(
+            <div key={ri}>
+              <h4>{r.round}</h4>
+              {r.matches.map((m,mi)=>(
+                <div key={mi} className="calendar-day">
+                  <div className="team">{m.team1} {m.goals1} - {m.goals2} {m.team2}</div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<EuroSimulation />);
+
+</script>
+</body>
+</html>
